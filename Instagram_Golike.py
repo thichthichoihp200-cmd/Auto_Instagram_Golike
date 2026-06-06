@@ -3,6 +3,7 @@ import time
 import random
 import os
 import subprocess
+import sys
 
 TOKEN_FILE = "authorized.txt"
 
@@ -19,11 +20,10 @@ C_WHITE  = "\033[1;37m"
 HEADERS_GOLIKE = {
     'authority': 'gateway.golike.net',
     'accept': 'application/json, text/plain, */*',
-    't-platform': 'ios',                  # Đổi nền tảng nhận diện thành ios
+    't-platform': 'ios',
     't-version': '62',
-    't-device': 'iPad',                   # Đổi thiết bị nhận diện thành iPad
+    't-device': 'iPad',
     't-device-id': 'uuid-' + str(random.randint(111111, 999999)),
-    # User-Agent chuẩn của trình duyệt Safari trên thiết bị iPad (iOS mới nhất)
     'user-agent': 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1 GoLike/1.1.2',
     'content-type': 'application/json;charset=UTF-8',
     'referer': 'https://app.golike.net/',
@@ -41,9 +41,7 @@ def save_data(file_path, data_list):
 def get_authorization():
     tokens = load_data(TOKEN_FILE)
     if tokens:
-        short_token = tokens[0][:15]
-        print(f"{C_CYAN}[*] Token hiện tại: {short_token}... [ĐÃ ẨN RÚT GỌN]{C_RESET}")
-        choice = input(f"{C_YELLOW}[?] Dùng lại (1) hay Thay mới (2): {C_RESET}")
+        choice = input(f"{C_YELLOW}[?] Dùng lại Token cũ (1) hay Thay mới (2): {C_RESET}")
         if choice == '1': return tokens[0]
     
     new_token = input(f"{C_CYAN}[>] Nhập Authorization mới: {C_RESET}").strip()
@@ -73,7 +71,7 @@ def open_link_with_termux(url):
         print(f"{C_RED}[-] Lỗi kích hoạt termux-open: {e}{C_RESET}")
 
 def run_job_for_account(token, ig_id, username, max_jobs):
-    print(f"\n{C_BLUE}[▶️ CHẠY] Bắt đầu nhận job cho nick: {C_WHITE}[{username}]{C_RESET}")
+    print(f"\n{C_CYAN}[▶️] Nick hoạt động: {C_WHITE}{username}{C_RESET}")
     headers = HEADERS_GOLIKE.copy()
     headers['authorization'] = token
     count = 0
@@ -81,8 +79,7 @@ def run_job_for_account(token, ig_id, username, max_jobs):
     
     while count < max_jobs:
         if empty_job_count >= 3:
-            print(f"\n{C_RED}🛑 [THÔNG BÁO] Nick [{username}] đã 3 lần liên tiếp không có job mới.{C_RESET}")
-            print(f"{C_YELLOW}👉 Tự động thoát lượt chạy để quay về danh sách chọn nick khác...{C_RESET}")
+            print(f"\n{C_RED}🛑 [THÔNG BÁO] Nick [{username}] đã 3 lần liên tiếp không có job.{C_RESET}")
             break
             
         url = f"https://gateway.golike.net/api/advertising/publishers/instagram/jobs?instagram_account_id={ig_id}&data=null"
@@ -103,55 +100,67 @@ def run_job_for_account(token, ig_id, username, max_jobs):
                 price = job_data.get('price_after_cost', 0)
                 
                 if job_type not in ['like', 'follow']: 
-                    print(f"{C_YELLOW}⚠️ Gặp Job {job_type.upper()} -> Đang tự động Skip...{C_RESET}")
-                    skip_url = "https://gateway.golike.net/api/advertising/publishers/instagram/skip-jobs"
-                    skip_payload = {
-                        "instagram_account_id": int(ig_id),
-                        "ads_id": int(ads_id) if ads_id else 0,
-                        "log_id": int(log_id) if log_id else 0,
-                        "object_id": str(object_id),
-                        "type": job_type
-                    }
-                    requests.post(skip_url, json=skip_payload, headers=headers, timeout=10)
-                    time.sleep(2)
+                    sys.stdout.write(f"\r{C_YELLOW}⚠️ Gặp Job {job_type.upper()} -> Đang tự động Skip...{C_RESET}")
+                    sys.stdout.flush()
+                    try:
+                        skip_url = "https://gateway.golike.net/api/advertising/publishers/instagram/skip-jobs"
+                        skip_payload = {
+                            "instagram_account_id": int(ig_id),
+                            "ads_id": int(ads_id) if ads_id else 0,
+                            "log_id": int(log_id) if log_id else 0,
+                            "object_id": str(object_id),
+                            "type": str(job_type).upper()
+                        }
+                        requests.post(skip_url, json=skip_payload, headers=headers, timeout=4)
+                    except:
+                        pass
+                    
+                    time.sleep(1.5)
                     continue
                 
-                print(f"\n{C_GREEN}⚡ Nhận Job thành công: {job_type.upper()} | Thù lao: {price} xu{C_RESET}")
-                print(f"{C_CYAN}👉 [ĐANG MỞ LINK] Vui lòng chọn App Instagram tương ứng trên màn hình...{C_RESET}")
+                print(f"\n{C_GREEN}⚡ [{count+1}/{max_jobs}] Nhận Job: {job_type.upper()} | Thù lao: {price} xu{C_RESET}")
                 
                 if link_instagram:
                     open_link_with_termux(link_instagram)
                 else: 
                     continue
                 
-                input(f"{C_YELLOW}[ Bấm ENTER sau khi làm xong trên App để nhận tiền... ]{C_RESET}")
+                input(f"{C_YELLOW}[ Nhấn ENTER để nhận tiền ]{C_RESET}")
                 
                 comp_url = "https://gateway.golike.net/api/advertising/publishers/instagram/complete-jobs"
-                payload = {"instagram_account_id": int(ig_id), "ads_id": int(ads_id), "log_id": int(log_id)}
+                payload = {
+                    "instagram_account_id": int(ig_id), 
+                    "ads_id": int(ads_id), 
+                    "log_id": int(log_id),
+                    "instagram_users_advertising_id": int(ads_id)
+                }
                 done = requests.post(comp_url, json=payload, headers=headers, timeout=10).json()
                 
                 if done.get('status') == 200:
                     count += 1
+                    # --- ĐÃ SỬA HIỂN THỊ CỘNG XU VÀ TIẾN ĐỘ Ở ĐÂY ---
                     print(f"{C_GREEN}✅ Thành công: +{price} xu ({count}/{max_jobs}){C_RESET}")
                 else:
                     print(f"{C_RED}❌ Thất bại: {done.get('message')}{C_RESET}")
                     
-                time.sleep(random.randint(3, 6))
+                time.sleep(random.randint(3, 5))
                 
             else:
                 empty_job_count += 1
-                server_message = res.get('message', 'Hiện tại chưa có job mới cho nick này.')
-                
-                print(f"\n{C_RED}⚠️ [{username}] Lần {empty_job_count}/3 không có job!{C_RESET}")
-                print(f"{C_YELLOW}💬 Thông báo GoLike: {server_message}{C_RESET}")
-                print(f"{C_CYAN}⏳ Chờ 10 giây để gọi lại API hệ thống...{C_RESET}")
-                
-                time.sleep(10)
+                for remaining in range(10, 0, -1):
+                    sys.stdout.write(f"\r{C_YELLOW}⚠️ Hết job (Lần {empty_job_count}/3). Thử lại sau {remaining} giây...{C_RESET}")
+                    sys.stdout.flush()
+                    time.sleep(1)
+                sys.stdout.write("\r" + " " * 60 + "\r")
                 
         except Exception as e:
-            print(f"{C_RED}[-] Lỗi hệ thống khi kết nối GoLike: {e}{C_RESET}")
-            time.sleep(10)
+            for remaining in range(10, 0, -1):
+                sys.stdout.write(f"\r{C_RED}⚠️ Lỗi kết nối. Thử lại sau {remaining} giây...{C_RESET}")
+                sys.stdout.flush()
+                time.sleep(1)
+            sys.stdout.write("\r" + " " * 60 + "\r")
         
+    print(f"\n{C_CYAN}👉 Hoàn thành phiên làm việc của nick [{username}].{C_RESET}")
     time.sleep(2)
 
 def manage_and_run():
@@ -176,7 +185,7 @@ def manage_and_run():
             
         print(f"{C_CYAN}----------------------------------------------------------{C_RESET}")
         print(f"{C_YELLOW}[ HƯỚNG DẪN ĐIỀU KHIỂN ]{C_RESET}")
-        print(f"  > Nhập số {C_GREEN}STT{C_RESET} của nick (Ví dụ: 1,4,12...) để chọn làm job.")
+        print(f"  > Nhập số {C_GREEN}STT{C_RESET} của nick để chọn làm job.")
         print(f"  > Nhập chữ {C_RED}'E'{C_RESET} để thoát tool.")
         print(f"{C_CYAN}----------------------------------------------------------{C_RESET}")
         
